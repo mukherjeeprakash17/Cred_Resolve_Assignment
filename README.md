@@ -44,3 +44,29 @@
 - ₹10 Cr investment recommendation: **Field Operations**, with an honest
   low–medium confidence caveat (the channel-conversion edge is only ~0.3pp)
   and a recommended 4-week A/B test before committing the full amount.
+
+## System Architecture
+
+The pipeline uses a multi-layer design to ensure data integrity and reproducibility (see `architecture_diagram.svg` for details):
+
+- **RAW:** Data from 17 source systems (collections, telephony, payment gateways).
+- **STAGING:** 1:1 load with typed schemas. Enforces data contracts and adds audit columns (no business logic here).
+- **CLEAN:** Handles deduplication, code standardization, and sanity filters via views (no hard deletes).
+- **GOLDEN:** Business-ready dimensional models (`dim_account`, `dim_agent`, `fct_payment`, `fct_account_month_recovery`).
+- **FEATURE:** Builds worked-population flags, cohort joins, and rolling windows.
+- **METRICS:** Computes KPIs (Recovery rate, RPC, PTP kept rate, channel conversion).
+- **DASHBOARD:** Executive 1-screen view + drill-down BI.
+
+**Key Design Decisions:**
+- **Denominator Integrity:** The feature layer computes the denominator (`fct_worked_account_month`) *first*, independent of outcomes. This prevents numerator/denominator mismatch, fixing a major historical inflation bug.
+- **Data Contracts:** Enforced at staging; schema changes fail the load instead of causing silent corruption downstream.
+- **Incremental Processing:** Append-only staging; upserts (merge) for clean/golden tables.
+
+## End-to-End Pipeline
+
+The pipeline is driven by Python and SQL:
+
+1. **Ingest & Clean** (`sql/01_staging.sql`, `sql/02_cleaning_dedup.sql`): Maps types, standardizes codes, and safely removes duplicates.
+2. **Build Golden Dataset** (`etl/build_golden_dataset.py`, `sql/03_golden_views.sql`): Python orchestrates the transformation into dimensional/fact tables. All cleaning decisions are logged and quantified in `golden_dataset/etl_log.json`.
+3. **Compute Metrics** (`etl/compute_metrics.py`, `sql/04_metrics.sql`): Calculates business KPIs using strict cohort definitions to prevent measurement inflation.
+4. **Analyze & Visualize** (`etl/build_notebook.py`, `sql/05_analytical_queries.sql`): Executes statistical tests and generates `collections_analysis.ipynb` and `executive_dashboard.html`.
