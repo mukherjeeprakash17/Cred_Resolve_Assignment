@@ -47,15 +47,19 @@
 
 ## System Architecture
 
-The pipeline uses a multi-layer design to ensure data integrity and reproducibility (see `architecture_diagram.svg` for details):
+The pipeline uses a multi-layer design to ensure data integrity and reproducibility. 
 
-- **RAW:** Data from 17 source systems (collections, telephony, payment gateways).
-- **STAGING:** 1:1 load with typed schemas. Enforces data contracts and adds audit columns (no business logic here).
-- **CLEAN:** Handles deduplication, code standardization, and sanity filters via views (no hard deletes).
-- **GOLDEN:** Business-ready dimensional models (`dim_account`, `dim_agent`, `fct_payment`, `fct_account_month_recovery`).
-- **FEATURE:** Builds worked-population flags, cohort joins, and rolling windows.
-- **METRICS:** Computes KPIs (Recovery rate, RPC, PTP kept rate, channel conversion).
-- **DASHBOARD:** Executive 1-screen view + drill-down BI.
+![System Architecture](architecture_diagram.svg)
+
+### What happens at each stage?
+
+- **RAW Layer:** We collect messy, raw data from 17 different places, like the collections platform, phone call logs, and payment gateways.
+- **STAGING Layer:** We load this data exactly as it is, but we organize it into proper columns and tables. We also check to make sure the data format hasn't unexpectedly changed (this is called a "data contract").
+- **CLEAN Layer:** We clean the data by removing duplicates, standardizing codes (like making sure "Active" and "actv" mean the same thing), and filtering out obvious errors. We don't delete any underlying data; we just create a clean view of it.
+- **GOLDEN Layer:** This is the core, business-ready data. We organize it into easy-to-understand tables like `accounts`, `agents`, `payments`, and `monthly_recovery`.
+- **FEATURE Layer:** We do advanced calculations here, like grouping accounts into cohorts, looking at rolling windows of time, and figuring out exactly who was "worked" by an agent. 
+- **METRICS Layer:** This is where we calculate the final business numbers, like the Recovery Rate, Cost per Rupee Recovered, and Right Party Contact (RPC) rate.
+- **DASHBOARD Layer:** Finally, we plug these clean metrics into an executive dashboard so leadership can view it all on one screen.
 
 **Key Design Decisions:**
 - **Denominator Integrity:** The feature layer computes the denominator (`fct_worked_account_month`) *first*, independent of outcomes. This prevents numerator/denominator mismatch, fixing a major historical inflation bug.
